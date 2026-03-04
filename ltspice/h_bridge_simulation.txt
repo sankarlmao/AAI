@@ -1,0 +1,440 @@
+# LTSPICE SIMULATION GUIDE - H-BRIDGE MOTOR DRIVER
+
+## Overview
+This guide provides step-by-step instructions for simulating the H-Bridge motor driver circuit in LTSpice, analyzing DC motor behavior, and verifying proper operation.
+
+---
+
+## LTSpice Netlist
+
+### Complete H-Bridge with DC Motor
+
+```spice
+* ============================================================================
+* H-BRIDGE DC MOTOR DRIVER FOR ELEVATOR CONTROL
+* ============================================================================
+* Description: 4-MOSFET H-Bridge with DC motor load
+* Purpose: Simulate bidirectional motor control for elevator system
+* Date: March 2026
+
+.title H-Bridge Elevator Motor Driver
+
+* ============================================================================
+* POWER SUPPLY
+* ============================================================================
+Vsupply Vdd 0 DC 24V
+
+* ============================================================================
+* CONTROL SIGNALS (Test Inputs)
+* ============================================================================
+* IN1 and IN2 control motor direction
+* Sequence: STOP → FORWARD → STOP → REVERSE → STOP
+
+Vin1 IN1 0 PULSE(0 5 1m 10u 10u 5m 15m)
+Vin2 IN2 0 PULSE(0 5 6m 10u 10u 5m 15m)
+
+* ============================================================================
+* HIGH-SIDE P-CHANNEL MOSFETs (Q1, Q2)
+* ============================================================================
+* Gate drivers with level shifting (simplified using voltage-controlled switches)
+
+* Gate driver for Q1
+Edrv1 G1 Vdd IN1 0 -12
+M1 MotorA G1 Vdd Vdd IRF9540
+
+* Gate driver for Q2
+Edrv2 G2 Vdd IN2 0 -12
+M2 MotorB G2 Vdd Vdd IRF9540
+
+* ============================================================================
+* LOW-SIDE N-CHANNEL MOSFETs (Q3, Q4)
+* ============================================================================
+M3 MotorA IN1 0 0 IRF540
+M4 MotorB IN2 0 0 IRF540
+
+* ============================================================================
+* DC MOTOR MODEL
+* ============================================================================
+* Electrical model: R-L with back-EMF
+* Motor specifications:
+*   - Rated voltage: 24V
+*   - Rated current: 3A
+*   - Armature resistance: 2 Ohm
+*   - Armature inductance: 10 mH
+*   - Back-EMF constant: 0.5V per rad/s
+
+Rmotor MotorA node1 2
+Lmotor node1 node2 10mH
+Eback node2 MotorB DC 0  ; Back-EMF (would vary with speed in real system)
+
+* ============================================================================
+* FLYBACK / FREEWHEELING DIODES
+* ============================================================================
+* Body diodes in MOSFETs provide this, but external diodes recommended
+
+D1 Vdd MotorA 1N5822
+D2 Vdd MotorB 1N5822
+D3 MotorA 0 1N5822
+D4 MotorB 0 1N5822
+
+* ============================================================================
+* CURRENT SENSE CIRCUIT
+* ============================================================================
+* Sense resistor for current measurement
+Rsense MotorB Vsense 0.1
+Vsense_ret Vsense 0 DC 0
+
+* ============================================================================
+* POWER SUPPLY DECOUPLING
+* ============================================================================
+Cbulk Vdd 0 1000uF IC=24V
+Cceramic Vdd 0 100nF
+
+* ============================================================================
+* MOSFET MODELS
+* ============================================================================
+* Use built-in models or include from library
+
+.model IRF540 NMOS(Level=1 Vto=4 Kp=20 Cgso=1000p Cgdo=400p)
+.model IRF9540 PMOS(Level=1 Vto=-4 Kp=10 Cgso=1000p Cgdo=400p)
+
+* ============================================================================
+* DIODE MODEL
+* ============================================================================
+.model 1N5822 D(Is=1e-12 Rs=0.05 N=1.5 Cjo=500pF Vj=0.75 M=0.5 Bv=40 Ibv=10u)
+
+* ============================================================================
+* SIMULATION COMMANDS
+* ============================================================================
+* Transient analysis: 20ms simulation time
+.tran 0 20ms 0 1us
+
+* Operating point analysis
+.op
+
+* ============================================================================
+* MEASUREMENT AND OUTPUT
+* ============================================================================
+* Measure motor voltage and current
+.meas TRAN V_motor_max MAX V(MotorA,MotorB)
+.meas TRAN I_motor_max MAX I(Rmotor)
+.meas TRAN P_motor_avg AVG V(MotorA,MotorB)*I(Rmotor)
+
+* Print statements
+.print tran V(MotorA) V(MotorB) V(MotorA,MotorB) I(Rmotor) I(Rsense) V(IN1) V(IN2)
+
+* ============================================================================
+* PROBE OUTPUTS (for waveform viewing)
+* ============================================================================
+.probe V(MotorA) V(MotorB) V(MotorA,MotorB)
+.probe I(Rmotor)
+.probe V(IN1) V(IN2)
+.probe V(Vsense)
+
+.end
+```
+
+---
+
+## Step-by-Step Simulation Instructions
+
+### Step 1: Install LTSpice
+1. Download LTSpice XVII from Analog Devices website
+2. Install on Windows, Mac, or Linux
+3. Launch LTSpice application
+
+### Step 2: Create New Schematic
+1. File → New Schematic
+2. Save as: `h_bridge_motor.asc`
+
+### Step 3: Place Components
+
+#### Power Supply
+1. Press **F2** or click Component button
+2. Type "voltage" → Select → Place
+3. Label: `Vsupply`
+4. Right-click → Advanced → DC Value: `24V`
+
+#### MOSFETs
+1. Press **F2** → Type "nmos" → Place Q3 and Q4
+2. Press **F2** → Type "pmos" → Place Q1 and Q2
+3. Right-click each MOSFET → Edit model:
+   - N-channel: `IRF540`
+   - P-channel: `IRF9540`
+
+#### Motor Components
+1. Press **F2** → Type "res" → Place `Rmotor` (2Ω)
+2. Press **F2** → Type "ind" → Place `Lmotor` (10mH)
+3. Press **F2** → Type "voltage" → Place `Eback` (0V initially)
+
+#### Diodes
+1. Press **F2** → Type "diode" → Place D1-D4
+2. Right-click each → Model: `1N5822`
+
+#### Capacitors
+1. Press **F2** → Type "cap" → Place:
+   - `Cbulk` = 1000µF
+   - `Cceramic` = 100nF
+
+#### Control Inputs
+1. Press **F2** → Type "voltage" → Place `Vin1` and `Vin2`
+2. Right-click → Advanced → PULSE:
+   - Vin1: `PULSE(0 5 1m 10u 10u 5m 15m)`
+   - Vin2: `PULSE(0 5 6m 10u 10u 5m 15m)`
+
+### Step 4: Wire Components
+1. Press **F3** or Wire tool
+2. Connect circuit according to schematic:
+```
+   Vdd → Q1,Q2 (sources)
+   Q1 drain → MotorA
+   Q2 drain → MotorB
+   MotorA → Q3 drain, Rmotor
+   MotorB → Q4 drain
+   Q3,Q4 sources → GND
+   Rmotor → Lmotor → MotorB
+```
+
+### Step 5: Label Nodes
+1. Press **F4** or Net Name tool
+2. Label nodes:
+   - `Vdd` (supply)
+   - `MotorA` (left motor terminal)
+   - `MotorB` (right motor terminal)
+   - `IN1`, `IN2` (control signals)
+   - `0` (ground)
+
+### Step 6: Add SPICE Directives
+1. Press **S** or SPICE Directive button
+2. Add: `.tran 0 20ms 0 1us`
+3. Add: `.model IRF540 NMOS(Level=1 Vto=4 Kp=20)`
+4. Add: `.model IRF9540 PMOS(Level=1 Vto=-4 Kp=10)`
+
+### Step 7: Run Simulation
+1. Click **Run** button (running person icon)
+2. Wait for simulation to complete
+3. Progress bar shows status
+
+### Step 8: View Waveforms
+Click on nodes/components to add traces:
+1. Click `MotorA` node → plots V(MotorA)
+2. Click `MotorB` node → plots V(MotorB)
+3. Click `Rmotor` → plots I(Rmotor)
+4. Right-click plot → Add Traces → Add expression: `V(MotorA)-V(MotorB)`
+
+---
+
+## Expected Simulation Results
+
+### Waveform Analysis
+
+**Control Signals:**
+```
+IN1: ______|‾‾‾‾‾|______|______|
+IN2: ______|______|______|‾‾‾‾‾|
+Time: 0    1m    6m    11m   16m
+```
+
+**Motor Voltage (V(MotorA) - V(MotorB)):**
+```
++24V  --------+        +-------
+       |      |        |
+   0V  +      +--------+       +----
+       |                       |
+ -24V  --------+        +-------
+Time: 0    1m    6m    11m   16m
+```
+
+**Motor Current (I(Rmotor)):**
+- **Forward phase (1-6ms)**: Current rises exponentially to ~12A (24V / 2Ω)
+- **Stop phase (6-11ms)**: Current decays to zero
+- **Reverse phase (11-16ms)**: Current rises negatively to ~-12A
+- **L/R time constant**: τ = L/R = 10mH / 2Ω = 5ms
+
+### Measurements
+
+Expected measurement results:
+```
+V_motor_max = 24V
+I_motor_max = 12A
+P_motor_avg = 150W (approximate)
+```
+
+---
+
+## Analysis Tasks
+
+### Task 1: Verify H-Bridge Operation
+**Check:**
+- [ ] Motor voltage is +24V when IN1=1, IN2=0
+- [ ] Motor voltage is -24V when IN1=0, IN2=1
+- [ ] Motor voltage is 0V when IN1=0, IN2=0
+- [ ] No shoot-through (both high-side On simultaneously)
+
+**Procedure:**
+1. Zoom into control signal transitions
+2. Verify MOSFET gate voltages
+3. Confirm proper switching sequence
+
+### Task 2: Measure Current Rise Time
+**Theory:** τ = L/R = 10mH / 2Ω = 5ms
+
+**Procedure:**
+1. Cursor on current waveform at t=1ms (start of forward)
+2. Second cursor when current reaches 63.2% of final value
+3. Time difference should be ~5ms
+
+### Task 3: Power Dissipation
+**Calculate conduction loss in MOSFETs:**
+
+**Formula:**
+```
+P_loss = I²_rms × R_DS(on)
+```
+
+**Procedure:**
+1. Right-click current plot → View → FFT
+2. Note RMS current value
+3. Calculate: P_loss = I_rms² × 0.05Ω (assuming R_DS(on) = 50mΩ)
+
+### Task 4: Back-EMF Simulation
+**Add back-EMF to motor model:**
+
+**Modify Eback:**
+```
+Eback node2 MotorB DC 0
+.param omega = 100  ; rad/s
+.param Ke = 0.5     ; V/(rad/s)
+Vback = Ke * omega = 50V
+```
+
+**Update:**
+```
+Eback node2 MotorB DC 50V
+```
+
+**Observe:** Motor current decreases due to back-EMF opposing applied voltage
+
+---
+
+## Advanced Simulations
+
+### Simulation 1: PWM Speed Control
+
+**Add PWM control:**
+```
+* Replace IN1 with PWM signal
+Vin1 IN1 0 PULSE(0 5 0 10n 10n 100u 200u)  ; 5kHz PWM, 50% duty
+
+* Add RC filter for current smoothing
+Rfilter MotorA MotorA_filtered 0.5
+Cfilter MotorA_filtered 0 1000uF
+```
+
+**Observe:** Average motor voltage = 12V (50% duty cycle)
+
+### Simulation 2: Regenerative Braking
+
+**Add diode and charging circuit:**
+```
+* Regenerative braking circuit
+Dbatt MotorB Vbatt 1N5822
+Vbatt Vbatt 0 DC 22V
+Rbatt_internal Vbatt Vbatt_terminal 0.1
+Cbatt Vbatt_terminal 0 10000uF
+```
+
+**Procedure:**
+1. Run motor forward to speed up
+2. Switch to reverse quickly
+3. Observe current flowing back to supply
+
+### Simulation 3: Thermal Analysis
+
+**Add thermal RC network:**
+```
+* Thermal model (simplified)
+Rth_JC Q1_temp Q1_case 0.5  ; °C/W Junction-to-case
+Rth_CS Q1_case heatsink 0.5  ; °C/W Case-to-sink
+Rth_SA heatsink ambient 10   ; °C/W Sink-to-ambient
+Cth heatsink 0 100           ; Thermal capacitance
+
+* Power dissipation source
+Gpower 0 Q1_temp VALUE={I(M1)^2 * 0.05}
+```
+
+---
+
+## Troubleshooting
+
+### Problem: Simulation Won't Converge
+
+**Solutions:**
+1. Reduce time step: `.tran 0 20ms 0 0.1us`
+2. Add `.options reltol=0.01`
+3. Add small resistance in series with capacitors (ESR)
+
+### Problem: Excessive Ringing on Motor Voltage
+
+**Solutions:**
+1. Add snubber network:
+```
+Rsnub MotorA 0 100
+Csnub MotorA 0 100nF
+```
+2. Add gate resistors:
+```
+Rgate1 IN1 G1_internal 10
+Rgate3 IN1 G3_internal 10
+```
+
+### Problem: Slow Simulation Speed
+
+**Solutions:**
+1. Use simplified MOSFET models (Level=1)
+2. Reduce capacitor values (keep ratios)
+3. Increase minimum time step
+4. Disable unnecessary measurements
+
+---
+
+## Exporting Results
+
+### Save Waveform Data
+1. File → Export → Export Data as Text
+2. Select signals to export
+3. Save as CSV file
+4. Import into MATLAB/Python for analysis
+
+### Generate Report
+1. Plot window → File → Export → Export Plot as Bitmap
+2. Save as PNG or BMP
+3. Include in project report
+
+### Create Parametric Sweep
+```
+.step param R_motor 1 5 1  ; Sweep from 1Ω to 5Ω
+```
+
+Run simulation to see effect of motor resistance
+
+---
+
+## References
+
+- LTSpice User Manual: https://www.analog.com/LTspice
+- IRF540 Datasheet: N-Channel MOSFET specifications
+- IRF9540 Datasheet: P-Channel MOSFET specifications
+- DC Motor Modeling: Electrical and mechanical equations
+
+---
+
+## Files Generated
+
+After simulation, LTSpice creates:
+- `h_bridge_motor.asc` - Schematic file
+- `h_bridge_motor.raw` - Simulation data (binary)
+- `h_bridge_motor.log` - Simulation log (text)
+- `h_bridge_motor.net` - SPICE netlist
+
+Keep all files together for reproducibility.
