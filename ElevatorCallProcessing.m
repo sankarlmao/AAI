@@ -321,10 +321,37 @@ updateFpgaOutput();
     end
 
     function smDoTransition(f)
+        % FIX: replaced timer()-based recursive animation with a plain
+        % for-loop + pause().  MATLAB timers run in the base workspace and
+        % cannot call nested functions, causing "Not enough input arguments".
         S.smMoving = true;
         path = buildSmPath(S.currentFloor, f);
-        smLog(sprintf('Departing Floor %d → Floor %d', S.currentFloor, f), 'info');
-        smAnimatePath(path, 1);
+        smLog(sprintf('Departing Floor %d -> Floor %d', S.currentFloor, f), 'info');
+        for i = 1:numel(path)
+            S.smState = path{i};
+            isFloor = strncmp(S.smState, 'FLOOR_', 6);
+            if isFloor
+                fnum = S.smState(end);
+                S.currentFloor = str2double(fnum);
+                smLog(sprintf('Arrived at Floor %s. Doors opening.', fnum));
+                delay = 1.0;
+            elseif strcmp(S.smState, 'MOVING_UP')
+                smLog('Elevator moving UP');
+                delay = 0.8;
+            else
+                smLog('Elevator moving DOWN');
+                delay = 0.8;
+            end
+            drawStateMachine(axSM, S.smState);
+            drawnow;
+            pause(delay);
+        end
+        S.smMoving = false;
+        if ~isempty(S.smQueue)
+            nxt = S.smQueue(1);
+            S.smQueue(1) = [];
+            smDoTransition(nxt);
+        end
     end
 
     function path = buildSmPath(from, to)
@@ -340,39 +367,6 @@ updateFpgaOutput();
                 path{end+1} = sprintf('FLOOR_%d', flr);          %#ok<AGROW>
             end
         end
-    end
-
-    function smAnimatePath(path, idx)
-        if idx > numel(path)
-            S.smMoving = false;
-            drawStateMachine(axSM, S.smState);
-            if ~isempty(S.smQueue)
-                nxt = S.smQueue(1);
-                S.smQueue(1) = [];
-                smDoTransition(nxt);
-            end
-            return;
-        end
-        S.smState = path{idx};
-        isFloor = startsWith(S.smState, 'FLOOR_');
-        if isFloor
-            fnum = S.smState(end);
-            S.currentFloor = str2double(fnum);
-            smLog(sprintf('Arrived at Floor %s. Doors opening.', fnum));
-        else
-            if strcmp(S.smState,'MOVING_UP')
-                smLog('Elevator moving UP ↑');
-            else
-                smLog('Elevator moving DOWN ↓');
-            end
-        end
-        drawStateMachine(axSM, S.smState);
-        drawnow;
-        delay = 0.8;
-        if isFloor, delay = 1.0; end
-        timer_obj = timer('ExecutionMode','singleShot','StartDelay',delay, ...
-            'TimerFcn', @(~,~) smAnimatePath(path, idx+1));
-        start(timer_obj);
     end
 
     function smReset()
@@ -399,7 +393,8 @@ updateFpgaOutput();
         end
         S.logLines{end+1} = entry;
         logArea.Value = S.logLines;
-        scroll(logArea,'bottom');
+        % scroll(logArea,'bottom') removed -- only available in R2021a+
+        drawnow;
     end
 
     % ────────────────────────────────────────────────────────────────────
