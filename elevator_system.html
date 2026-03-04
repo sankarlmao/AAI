@@ -1,0 +1,955 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Elevator Call Processing System</title>
+  <style>
+    :root {
+      --bg: #0d1117;
+      --surface: #161b22;
+      --card: #1c2128;
+      --border: #30363d;
+      --accent: #58a6ff;
+      --green: #3fb950;
+      --red: #f85149;
+      --yellow: #d29922;
+      --orange: #db6d28;
+      --purple: #bc8cff;
+      --text: #e6edf3;
+      --muted: #8b949e;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Segoe UI', Arial, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      padding: 0 0 60px 0;
+    }
+    header {
+      background: linear-gradient(135deg, #1a2332, #0d1117);
+      border-bottom: 2px solid var(--accent);
+      padding: 28px 40px;
+      text-align: center;
+    }
+    header h1 { font-size: 2rem; color: var(--accent); letter-spacing: 2px; }
+    header p  { color: var(--muted); margin-top: 6px; font-size: 0.95rem; }
+    .tabs {
+      display: flex; justify-content: center; gap: 6px;
+      background: var(--surface); padding: 14px;
+      border-bottom: 1px solid var(--border); flex-wrap: wrap;
+    }
+    .tab-btn {
+      padding: 10px 26px; border: 1px solid var(--border);
+      border-radius: 6px; cursor: pointer;
+      background: var(--card); color: var(--muted);
+      font-size: 0.9rem; font-weight: 600; letter-spacing: .5px;
+      transition: all .2s;
+    }
+    .tab-btn:hover  { border-color: var(--accent); color: var(--accent); }
+    .tab-btn.active { background: var(--accent); color: #0d1117; border-color: var(--accent); }
+    .tab-content { display: none; }
+    .tab-content.active { display: block; }
+    .section {
+      max-width: 1100px; margin: 30px auto; padding: 0 20px;
+    }
+    .card {
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: 10px; padding: 28px; margin-bottom: 24px;
+    }
+    .card-title {
+      font-size: 1.1rem; font-weight: 700; color: var(--accent);
+      border-bottom: 1px solid var(--border); padding-bottom: 12px; margin-bottom: 20px;
+      display: flex; align-items: center; gap: 10px;
+    }
+    .badge {
+      font-size: 0.72rem; padding: 3px 8px; border-radius: 4px;
+      font-weight: 600; letter-spacing: .5px;
+    }
+    .badge-green  { background: #1a3a2a; color: var(--green); }
+    .badge-blue   { background: #162032; color: var(--accent); }
+    .badge-yellow { background: #2e2011; color: var(--yellow); }
+
+    /* ── STATE MACHINE ── */
+    #sm-canvas { width: 100%; display: block; }
+    .ctrl-row {
+      display: flex; flex-wrap: wrap; gap: 10px;
+      align-items: center; justify-content: center; margin-top: 18px;
+    }
+    .floor-btn {
+      padding: 11px 28px; border-radius: 8px; cursor: pointer;
+      font-size: 1rem; font-weight: 700; letter-spacing: 1px;
+      border: 2px solid; transition: all .2s;
+    }
+    .floor-btn.f1  { border-color: var(--green);  color: var(--green);  background: transparent; }
+    .floor-btn.f2  { border-color: var(--yellow); color: var(--yellow); background: transparent; }
+    .floor-btn.f3  { border-color: var(--red);    color: var(--red);    background: transparent; }
+    .floor-btn:hover { filter: brightness(1.3); }
+    .floor-btn.pressed.f1 { background: var(--green);  color: #000; }
+    .floor-btn.pressed.f2 { background: var(--yellow); color: #000; }
+    .floor-btn.pressed.f3 { background: var(--red);    color: #fff; }
+    .reset-btn {
+      padding: 10px 22px; border-radius: 8px; cursor: pointer;
+      border: 2px solid var(--muted); color: var(--muted);
+      background: transparent; font-size: 0.9rem; font-weight: 600;
+    }
+    .reset-btn:hover { border-color: var(--text); color: var(--text); }
+    #sm-log {
+      margin-top: 16px; background: var(--bg);
+      border: 1px solid var(--border); border-radius: 8px;
+      padding: 14px; font-family: monospace; font-size: 0.85rem;
+      max-height: 160px; overflow-y: auto; color: var(--green);
+    }
+    #sm-log .log-ts  { color: var(--muted); }
+    #sm-log .log-err { color: var(--red); }
+    #sm-log .log-info { color: var(--accent); }
+
+    .state-table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
+    .state-table th { background: #1a2332; color: var(--accent); padding: 10px 14px; text-align: left; }
+    .state-table td { padding: 9px 14px; border-bottom: 1px solid var(--border); }
+    .state-table tr:hover td { background: #1a2025; }
+
+    /* ── H-BRIDGE ── */
+    #hb-canvas { width: 100%; display: block; }
+    .hb-ctrl {
+      display: flex; flex-wrap: wrap; gap: 12px;
+      justify-content: center; margin-top: 18px;
+    }
+    .hb-btn {
+      padding: 11px 26px; border-radius: 8px; cursor: pointer;
+      font-size: 0.92rem; font-weight: 700; border: 2px solid;
+      transition: all .2s;
+    }
+    .hb-btn.up   { border-color: var(--green);  color: var(--green);  background: transparent; }
+    .hb-btn.down { border-color: var(--red);    color: var(--red);    background: transparent; }
+    .hb-btn.stop { border-color: var(--muted);  color: var(--muted);  background: transparent; }
+    .hb-btn.up:hover   { background: var(--green);  color: #000; }
+    .hb-btn.down:hover { background: var(--red);    color: #fff; }
+    .hb-btn.stop:hover { background: var(--muted);  color: #000; }
+    #hb-status {
+      text-align: center; margin-top: 14px;
+      font-size: 1.05rem; font-weight: 700; letter-spacing: 1px;
+      color: var(--accent);
+    }
+    .truth-table { width: 100%; border-collapse: collapse; font-size: 0.88rem; margin-top: 10px; }
+    .truth-table th { background: #1a2332; color: var(--accent); padding: 9px 12px; }
+    .truth-table td { padding: 8px 12px; border-bottom: 1px solid var(--border); text-align: center; font-family: monospace; }
+    .truth-table tr.active-row td { background: #1a3a2a; color: var(--green); font-weight: 700; }
+
+    /* ── FPGA ── */
+    .fpga-grid {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 20px;
+    }
+    @media(max-width: 700px) { .fpga-grid { grid-template-columns: 1fr; } }
+    .input-group { margin-bottom: 14px; }
+    .input-group label { display: block; font-size: 0.85rem; color: var(--muted); margin-bottom: 6px; }
+    .toggle-row { display: flex; gap: 12px; flex-wrap: wrap; }
+    .toggle {
+      padding: 9px 20px; border-radius: 7px; cursor: pointer;
+      font-size: 0.88rem; font-weight: 600;
+      border: 2px solid var(--border); color: var(--muted); background: transparent;
+      transition: all .2s;
+    }
+    .toggle.active { border-color: var(--accent); color: var(--accent); background: #162032; }
+    #fpga-result {
+      background: var(--bg); border: 1px solid var(--border);
+      border-radius: 8px; padding: 20px; margin-top: 4px;
+    }
+    .result-line { 
+      display: flex; align-items: center; gap: 10px;
+      padding: 8px 0; border-bottom: 1px solid var(--border);
+      font-size: 0.9rem;
+    }
+    .result-line:last-child { border-bottom: none; }
+    .result-label { color: var(--muted); width: 180px; flex-shrink: 0; }
+    .result-val { font-weight: 700; font-family: monospace; }
+    .val-green  { color: var(--green); }
+    .val-red    { color: var(--red); }
+    .val-yellow { color: var(--yellow); }
+    .val-blue   { color: var(--accent); }
+    #fpga-canvas { width: 100%; display: block; margin-top: 16px; }
+    .priority-explain {
+      background: var(--bg); border-left: 3px solid var(--accent);
+      padding: 14px 18px; border-radius: 4px; margin-top: 12px;
+      font-size: 0.88rem; line-height: 1.7; color: var(--muted);
+    }
+    .priority-explain span { color: var(--text); }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>&#9650; ELEVATOR CALL PROCESSING SYSTEM</h1>
+  <p>State Machine &nbsp;|&nbsp; H-Bridge Motor Driver (LTSpice) &nbsp;|&nbsp; FPGA Priority Logic</p>
+</header>
+
+<div class="tabs">
+  <button class="tab-btn active" onclick="showTab('sm')">&#9654; State Machine</button>
+  <button class="tab-btn"        onclick="showTab('hb')">&#9889; H-Bridge Motor Driver</button>
+  <button class="tab-btn"        onclick="showTab('fp')">&#9632; FPGA Priority Logic</button>
+</div>
+
+<!-- ═══════════════════════════════════════════
+     TAB 1 – STATE MACHINE
+═══════════════════════════════════════════ -->
+<div id="tab-sm" class="tab-content active">
+  <div class="section">
+
+    <div class="card">
+      <div class="card-title">
+        Elevator State Machine Diagram
+        <span class="badge badge-blue">5 States</span>
+      </div>
+      <canvas id="sm-canvas" height="380"></canvas>
+      <div class="ctrl-row">
+        <button class="floor-btn f1" id="btn-f1" onclick="requestFloor(1)">CALL Floor 1</button>
+        <button class="floor-btn f2" id="btn-f2" onclick="requestFloor(2)">CALL Floor 2</button>
+        <button class="floor-btn f3" id="btn-f3" onclick="requestFloor(3)">CALL Floor 3</button>
+        <button class="reset-btn"   onclick="resetSM()">&#8635; Reset</button>
+      </div>
+      <div id="sm-log">
+        <div><span class="log-ts">[00:00]</span> <span class="log-info">System initialized. Elevator at Floor 1. Idle.</span></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">State Transition Table</div>
+      <table class="state-table">
+        <thead>
+          <tr><th>Current State</th><th>Trigger / Input</th><th>Next State</th><th>Output / Action</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>FLOOR_1 (Idle)</td><td>Call Floor 2 or Floor 3</td><td>MOVING_UP</td><td>Start motor UP, doors close</td></tr>
+          <tr><td>MOVING_UP</td><td>Reached Floor 2 sensor</td><td>FLOOR_2</td><td>Stop motor, open doors</td></tr>
+          <tr><td>MOVING_UP</td><td>Call Floor 3 (already moving up)</td><td>MOVING_UP → FLOOR_3</td><td>Continue up, serve Floor 3 next</td></tr>
+          <tr><td>FLOOR_2 (Stop)</td><td>Call Floor 3</td><td>MOVING_UP</td><td>Start motor UP</td></tr>
+          <tr><td>FLOOR_2 (Stop)</td><td>Call Floor 1</td><td>MOVING_DOWN</td><td>Start motor DOWN</td></tr>
+          <tr><td>MOVING_DOWN</td><td>Reached Floor 1 sensor</td><td>FLOOR_1</td><td>Stop motor, open doors</td></tr>
+          <tr><td>FLOOR_3 (Idle)</td><td>Call Floor 1 or Floor 2</td><td>MOVING_DOWN</td><td>Start motor DOWN, doors close</td></tr>
+          <tr><td>FLOOR_3 (Idle)</td><td>No pending calls</td><td>FLOOR_3 (Idle)</td><td>Remain stationary</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════
+     TAB 2 – H-BRIDGE
+═══════════════════════════════════════════ -->
+<div id="tab-hb" class="tab-content">
+  <div class="section">
+
+    <div class="card">
+      <div class="card-title">
+        H-Bridge Motor Driver Circuit
+        <span class="badge badge-green">LTSpice Simulation</span>
+      </div>
+      <canvas id="hb-canvas" height="420"></canvas>
+      <div class="hb-ctrl">
+        <button class="hb-btn up"   onclick="setMotor('up')">&#9650; MOVE UP (Q1+Q4 ON)</button>
+        <button class="hb-btn stop" onclick="setMotor('off')">&#9632; STOP (All OFF)</button>
+        <button class="hb-btn down" onclick="setMotor('down')">&#9660; MOVE DOWN (Q2+Q3 ON)</button>
+      </div>
+      <div id="hb-status">Motor State: STOPPED</div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">H-Bridge Truth Table &amp; Operating Modes</div>
+      <table class="truth-table" id="hb-table">
+        <thead>
+          <tr><th>Mode</th><th>Q1 (IN1)</th><th>Q2 (IN2)</th><th>Q3 (IN3)</th><th>Q4 (IN4)</th><th>Motor Direction</th><th>Motor Current Path</th></tr>
+        </thead>
+        <tbody>
+          <tr id="row-up">
+            <td>&#9650; Moving UP</td><td>ON (1)</td><td>OFF (0)</td><td>OFF (0)</td><td>ON (1)</td>
+            <td style="color:var(--green);">FORWARD</td><td>VCC → Q1 → M+ → M- → Q4 → GND</td>
+          </tr>
+          <tr id="row-down">
+            <td>&#9660; Moving DOWN</td><td>OFF (0)</td><td>ON (1)</td><td>ON (1)</td><td>OFF (0)</td>
+            <td style="color:var(--red);">REVERSE</td><td>VCC → Q2 → M- → M+ → Q3 → GND</td>
+          </tr>
+          <tr id="row-stop">
+            <td>&#9632; STOP (Coast)</td><td>OFF (0)</td><td>OFF (0)</td><td>OFF (0)</td><td>OFF (0)</td>
+            <td style="color:var(--muted);">STOPPED</td><td>No current path (open circuit)</td>
+          </tr>
+          <tr>
+            <td>&#9888; BRAKE</td><td>ON (1)</td><td>OFF (0)</td><td>ON (1)</td><td>OFF (0)</td>
+            <td style="color:var(--yellow);">BRAKE (short)</td><td>Motor shorted through low-side</td>
+          </tr>
+          <tr>
+            <td>&#9889; FORBIDDEN</td><td>ON (1)</td><td>ON (1)</td><td>—</td><td>—</td>
+            <td style="color:var(--red);">SHOOT-THROUGH</td><td>VCC → GND (DANGER – short circuit!)</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <div class="card-title" style="margin-top:24px;">
+        LTSpice Component Parameters
+        <span class="badge badge-yellow">Simulation Values</span>
+      </div>
+      <table class="state-table">
+        <thead><tr><th>Component</th><th>Type / Model</th><th>Value / Parameter</th><th>Role</th></tr></thead>
+        <tbody>
+          <tr><td>V1 (Vsupply)</td><td>DC Voltage Source</td><td>12 V</td><td>H-Bridge power supply</td></tr>
+          <tr><td>Q1, Q2 (High-side)</td><td>PMOS / P-Channel FET</td><td>IRF9540 (Vgs= -10V)</td><td>Connect motor to VCC</td></tr>
+          <tr><td>Q3, Q4 (Low-side)</td><td>NMOS / N-Channel FET</td><td>IRF540  (Vgs= +10V)</td><td>Connect motor to GND</td></tr>
+          <tr><td>M1 (Motor)</td><td>DC Motor (RL load)</td><td>R=5Ω, L=10mH, Bemf=0.01</td><td>Elevator cab mechanical drive</td></tr>
+          <tr><td>D1-D4 (Flyback)</td><td>Schottky Diode</td><td>1N5819 (Vf=0.3V)</td><td>Back-EMF protection</td></tr>
+          <tr><td>C1 (Decoupling)</td><td>Electrolytic Cap</td><td>100 µF / 25V</td><td>Suppresses switching transients</td></tr>
+          <tr><td>R_sense</td><td>Current sense resistor</td><td>0.1 Ω / 2W</td><td>Motor current monitoring</td></tr>
+          <tr><td>Vgate High-side</td><td>Gate drive voltage</td><td>-10V (PMOS off) / 0V (on)</td><td>PMOS gate control</td></tr>
+          <tr><td>Vgate Low-side</td><td>Gate drive voltage</td><td>0V (NMOS off) / 10V (on)</td><td>NMOS gate control</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════
+     TAB 3 – FPGA
+═══════════════════════════════════════════ -->
+<div id="tab-fp" class="tab-content">
+  <div class="section">
+    <div class="card">
+      <div class="card-title">
+        FPGA Priority Logic – Input Controls
+        <span class="badge badge-blue">Real-Time Decision</span>
+      </div>
+      <div class="fpga-grid">
+        <div>
+          <div class="input-group">
+            <label>Current Elevator Position</label>
+            <div class="toggle-row">
+              <button class="toggle active" id="pos-f1" onclick="setPos(1)">Floor 1</button>
+              <button class="toggle"        id="pos-f2" onclick="setPos(2)">Floor 2</button>
+              <button class="toggle"        id="pos-f3" onclick="setPos(3)">Floor 3</button>
+            </div>
+          </div>
+          <div class="input-group">
+            <label>Current Direction of Travel</label>
+            <div class="toggle-row">
+              <button class="toggle active" id="dir-idle" onclick="setDir('idle')">Idle</button>
+              <button class="toggle"        id="dir-up"   onclick="setDir('up')">&#9650; Moving Up</button>
+              <button class="toggle"        id="dir-dn"   onclick="setDir('down')">&#9660; Moving Down</button>
+            </div>
+          </div>
+          <div class="input-group">
+            <label>Pending Floor Calls (select all active)</label>
+            <div class="toggle-row">
+              <button class="toggle" id="call-f1" onclick="toggleCall(1)">Call – Floor 1</button>
+              <button class="toggle" id="call-f2" onclick="toggleCall(2)">Call – Floor 2</button>
+              <button class="toggle" id="call-f3" onclick="toggleCall(3)">Call – Floor 3</button>
+            </div>
+          </div>
+        </div>
+        <div id="fpga-result">
+          <!-- filled by JS -->
+        </div>
+      </div>
+      <div class="priority-explain" id="fpga-explain"></div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">FPGA Priority Logic – Circuit Diagram</div>
+      <canvas id="fpga-canvas" height="370"></canvas>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Priority Decision Truth Table</div>
+      <table class="truth-table">
+        <thead>
+          <tr><th>Position</th><th>Direction</th><th>Call F1</th><th>Call F2</th><th>Call F3</th><th>Next Target</th><th>Priority Rule</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>F1</td><td>Idle</td><td>0</td><td>1</td><td>0</td><td style="color:var(--yellow)">Floor 2</td><td>Only call</td></tr>
+          <tr><td>F1</td><td>Idle</td><td>0</td><td>0</td><td>1</td><td style="color:var(--red)">Floor 3</td><td>Only call</td></tr>
+          <tr><td>F1</td><td>Idle / Up</td><td>0</td><td>1</td><td>1</td><td style="color:var(--yellow)">Floor 2 first</td><td>Serve in direction</td></tr>
+          <tr><td>F2</td><td>Up</td><td>1</td><td>0</td><td>1</td><td style="color:var(--red)">Floor 3 first</td><td>Continue current dir</td></tr>
+          <tr><td>F2</td><td>Down</td><td>1</td><td>0</td><td>1</td><td style="color:var(--green)">Floor 1 first</td><td>Continue current dir</td></tr>
+          <tr><td>F2</td><td>Idle</td><td>1</td><td>0</td><td>1</td><td style="color:var(--green)">Floor 1 first</td><td>Down preference (idle)</td></tr>
+          <tr><td>F3</td><td>Idle / Down</td><td>1</td><td>1</td><td>0</td><td style="color:var(--yellow)">Floor 2 first</td><td>Serve in direction</td></tr>
+          <tr><td>F3</td><td>Down</td><td>1</td><td>0</td><td>0</td><td style="color:var(--green)">Floor 1</td><td>Only call</td></tr>
+          <tr><td>Any</td><td>Any</td><td>1</td><td>0</td><td>1</td><td colspan="2" style="color:var(--accent)">→ Direction decides: UP→F3 first, DOWN/IDLE→F1 first</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════
+     JAVASCRIPT
+═══════════════════════════════════════════ -->
+<script>
+/* ───────────────────────── TABS ───────────────────────── */
+function showTab(id) {
+  document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('tab-'+id).classList.add('active');
+  event.currentTarget.classList.add('active');
+  if(id==='sm') { requestAnimationFrame(drawSM); }
+  if(id==='hb') { requestAnimationFrame(() => drawHB(motorState)); }
+  if(id==='fp') { requestAnimationFrame(drawFPGA); updateFPGA(); }
+}
+
+/* ─────────────────── STATE MACHINE ──────────────────── */
+const STATES = ['FLOOR_1','MOVING_UP','FLOOR_2','MOVING_DOWN','FLOOR_3'];
+let smState  = 'FLOOR_1';
+let smQueue  = [];
+let smMoving = false;
+let logTime  = 0;
+
+const STATE_META = {
+  FLOOR_1:    { label:'FLOOR 1\n(Idle/Open)',  color:'#3fb950', x:.10, y:.50 },
+  MOVING_UP:  { label:'MOVING\nUP',            color:'#58a6ff', x:.38, y:.20 },
+  FLOOR_2:    { label:'FLOOR 2\n(Stop/Open)',  color:'#d29922', x:.62, y:.50 },
+  MOVING_DOWN:{ label:'MOVING\nDOWN',          color:'#db6d28', x:.38, y:.80 },
+  FLOOR_3:    { label:'FLOOR 3\n(Idle/Open)',  color:'#f85149', x:.88, y:.50 },
+};
+
+function drawSM() {
+  const canvas = document.getElementById('sm-canvas');
+  const W = canvas.offsetWidth; const H = canvas.height;
+  canvas.width = W;
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0,0,W,H);
+
+  const nodes = {};
+  for(const [id,m] of Object.entries(STATE_META)){
+    nodes[id] = { x: m.x*W, y: m.y*H, color: m.color, label: m.label };
+  }
+
+  // ── Draw arrows (transitions)
+  const arrows = [
+    {from:'FLOOR_1',    to:'MOVING_UP',   label:'Call F2 / F3',  curve: -30},
+    {from:'MOVING_UP',  to:'FLOOR_2',     label:'Reach F2 sensor',curve: -30},
+    {from:'MOVING_UP',  to:'FLOOR_3',     label:'Reach F3 sensor',curve: -50},
+    {from:'FLOOR_2',    to:'MOVING_UP',   label:'Call F3',        curve:  30},
+    {from:'FLOOR_2',    to:'MOVING_DOWN', label:'Call F1',        curve: -30},
+    {from:'MOVING_DOWN',to:'FLOOR_1',     label:'Reach F1 sensor',curve: -30},
+    {from:'FLOOR_3',    to:'MOVING_DOWN', label:'Call F1 / F2',   curve: -30},
+    {from:'MOVING_DOWN',to:'FLOOR_2',     label:'Reach F2 sensor',curve:  30},
+  ];
+
+  arrows.forEach(a => {
+    const s = nodes[a.from], e = nodes[a.to];
+    drawArrow(ctx, s.x, s.y, e.x, e.y, a.label, a.curve, '#30363d', '#8b949e');
+  });
+
+  // ── Draw nodes
+  for(const [id,n] of Object.entries(nodes)){
+    const active = (id === smState);
+    const r = 42;
+    ctx.save();
+    if(active){
+      ctx.shadowColor = n.color;
+      ctx.shadowBlur  = 22;
+    }
+    ctx.beginPath();
+    ctx.arc(n.x, n.y, r, 0, Math.PI*2);
+    ctx.fillStyle = active ? n.color+'33' : '#1c2128';
+    ctx.fill();
+    ctx.strokeStyle = active ? n.color : '#30363d';
+    ctx.lineWidth   = active ? 3 : 1.5;
+    ctx.stroke();
+    ctx.restore();
+
+    // Label
+    ctx.fillStyle = active ? n.color : '#8b949e';
+    ctx.font = (active?'bold ':'') + '11px Segoe UI';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    const lines = n.label.split('\n');
+    lines.forEach((l,i) => ctx.fillText(l, n.x, n.y - 7 + i*15));
+
+    if(active){
+      ctx.fillStyle = n.color;
+      ctx.font = '9px Segoe UI';
+      ctx.fillText('● ACTIVE', n.x, n.y + 30);
+    }
+  }
+}
+
+function drawArrow(ctx, x1,y1,x2,y2, label, curve, lineCol, textCol){
+  const mx = (x1+x2)/2, my = (y1+y2)/2;
+  const dx = x2-x1, dy = y2-y1;
+  const len = Math.sqrt(dx*dx+dy*dy);
+  const nx = -dy/len, ny = dx/len;
+  const cpx = mx + nx*curve, cpy = my + ny*curve;
+
+  ctx.beginPath();
+  ctx.moveTo(x1,y1);
+  ctx.quadraticCurveTo(cpx,cpy,x2,y2);
+  ctx.strokeStyle = lineCol;
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+
+  // Arrowhead
+  const t = .88;
+  const ax = (1-t)*(1-t)*x1 + 2*(1-t)*t*cpx + t*t*x2;
+  const ay = (1-t)*(1-t)*y1 + 2*(1-t)*t*cpy + t*t*y2;
+  const tx2 = 2*(1-t)*(cpx-x1)+2*t*(x2-cpx);
+  const ty2 = 2*(1-t)*(cpy-y1)+2*t*(y2-cpy);
+  const angle = Math.atan2(ty2,tx2);
+  ctx.save();
+  ctx.translate(ax,ay); ctx.rotate(angle);
+  ctx.beginPath();
+  ctx.moveTo(0,0); ctx.lineTo(-9,-4); ctx.lineTo(-9,4); ctx.closePath();
+  ctx.fillStyle = lineCol; ctx.fill();
+  ctx.restore();
+
+  // Label
+  const lx = cpx + nx*14, ly = cpy + ny*14;
+  ctx.fillStyle = textCol;
+  ctx.font = '9px Segoe UI';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText(label, lx, ly);
+}
+
+function requestFloor(f){
+  const btn = document.getElementById('btn-f'+f);
+  btn.classList.add('pressed');
+  setTimeout(()=>btn.classList.remove('pressed'), 600);
+  processFloor(f);
+}
+
+function processFloor(f){
+  const target = 'FLOOR_'+f;
+  if(smState === target){ log('Already at Floor '+f, 'err'); return; }
+  if(smMoving){ smQueue.push(f); log('Floor '+f+' queued.','info'); return; }
+  doTransition(f);
+}
+
+function doTransition(f){
+  const target = 'FLOOR_'+f;
+  const cur = smState;
+  // Determine path
+  const floorOf = s => ({ FLOOR_1:1, MOVING_UP:null, FLOOR_2:2, MOVING_DOWN:null, FLOOR_3:3 }[s]);
+  const cf = floorOf(cur);
+
+  if(cf === null){ log('Elevator is already moving. Queued Floor '+f,'info'); smQueue.push(f); return; }
+
+  const dir = f > cf ? 'up' : 'down';
+  smMoving = true;
+
+  const path = buildPath(cf, f);
+  log('Departing Floor '+cf+' → Floor '+f+' via: '+path.join(' → '), 'info');
+  animatePath(path, 0);
+}
+
+function buildPath(from, to){
+  const seq = ['FLOOR_1','MOVING_UP','FLOOR_2','MOVING_DOWN_SIM','FLOOR_3'];
+  // Simplified: just list floors with moving states in between
+  const floors = [1,2,3];
+  const path = [];
+  if(to > from){
+    for(let i=from;i<=to;i++){
+      if(i>from) path.push('MOVING_UP');
+      path.push('FLOOR_'+i);
+    }
+  } else {
+    for(let i=from;i>=to;i--){
+      if(i<from) path.push('MOVING_DOWN');
+      path.push('FLOOR_'+i);
+    }
+  }
+  return path;
+}
+
+function animatePath(path, idx){
+  if(idx >= path.length){ smMoving = false; drawSM();
+    if(smQueue.length){ const nxt = smQueue.shift(); doTransition(nxt); }
+    return;
+  }
+  smState = path[idx];
+  drawSM();
+  const isFloor = smState.startsWith('FLOOR_');
+  if(isFloor){ const n=smState.split('_')[1]; log('Arrived at Floor '+n+'. Doors opening.'); }
+  else { log('Elevator ' + (smState==='MOVING_UP'?'moving UP ↑':'moving DOWN ↓')); }
+  setTimeout(()=>animatePath(path,idx+1), isFloor ? 900 : 700);
+}
+
+function resetSM(){
+  smState='FLOOR_1'; smQueue=[]; smMoving=false;
+  document.getElementById('sm-log').innerHTML =
+    '<div><span class="log-ts">[00:00]</span> <span class="log-info">System reset. Elevator at Floor 1.</span></div>';
+  logTime=0; drawSM();
+}
+
+function log(msg, type=''){
+  logTime++;
+  const mm = String(Math.floor(logTime/60)).padStart(2,'0');
+  const ss = String(logTime%60).padStart(2,'0');
+  const el = document.getElementById('sm-log');
+  const cls = type==='err'?'log-err': type==='info'?'log-info':'';
+  el.innerHTML += `<div><span class="log-ts">[${mm}:${ss}]</span> ${cls?`<span class="${cls}">`:''}${msg}${cls?'</span>':''}</div>`;
+  el.scrollTop = el.scrollHeight;
+}
+
+/* ─────────────────── H-BRIDGE ──────────────────── */
+let motorState = 'off';
+
+function setMotor(state){
+  motorState = state;
+  const labels = { up:'Motor State: MOVING UP ↑', down:'Motor State: MOVING DOWN ↓', off:'Motor State: STOPPED' };
+  document.getElementById('hb-status').textContent = labels[state];
+  document.getElementById('hb-status').style.color =
+    state==='up'?'var(--green)': state==='down'?'var(--red)':'var(--muted)';
+
+  ['up','down','stop'].forEach(r=>{
+    const row = document.getElementById('row-'+( r==='stop'?'stop':r));
+    if(row) row.classList.remove('active-row');
+  });
+  const rowId = state==='up'?'row-up': state==='down'?'row-down': 'row-stop';
+  document.getElementById(rowId)?.classList.add('active-row');
+  drawHB(state);
+}
+
+function drawHB(state){
+  const canvas = document.getElementById('hb-canvas');
+  if(!canvas) return;
+  const W = canvas.offsetWidth; const H = canvas.height;
+  canvas.width = W;
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0,0,W,H);
+
+  // Layout constants
+  const cx = W/2, cy = H/2;
+  const bW = Math.min(W*0.55, 320), bH = H*0.72;
+  const L = cx - bW/2, R = cx + bW/2;
+  const T = cy - bH/2, B = cy + bH/2;
+  const mL = cx-38, mR = cx+38, mT = cy-28, mB = cy+28;
+
+  // Active transistors
+  const q1on = state==='up',   q4on = state==='up';
+  const q2on = state==='down', q3on = state==='down';
+
+  function wire(x1,y1,x2,y2,active){
+    ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2);
+    ctx.strokeStyle = active ? '#3fb950' : '#30363d';
+    ctx.lineWidth   = active ? 3 : 1.5;
+    ctx.stroke();
+  }
+
+  // Power rails
+  ctx.fillStyle = '#1a3a2a'; ctx.fillRect(L-10,T-18, bW+20,14);
+  ctx.fillStyle = '#3a1a1a'; ctx.fillRect(L-10,B+4,  bW+20,14);
+  ctx.fillStyle = '#3fb950'; ctx.font='bold 10px monospace'; ctx.textAlign='center';
+  ctx.fillText('VCC +12V', cx, T-7);
+  ctx.fillStyle = '#f85149';
+  ctx.fillText('GND', cx, B+14);
+
+  // ── Four corners = transistors
+  const Q = {
+    Q1: {x:L+30, y:T+50,  on:q1on, label:'Q1\n(PMOS)', side:'top-left'},
+    Q2: {x:R-30, y:T+50,  on:q2on, label:'Q2\n(PMOS)', side:'top-right'},
+    Q3: {x:L+30, y:B-50,  on:q3on, label:'Q3\n(NMOS)', side:'bot-left'},
+    Q4: {x:R-30, y:B-50,  on:q4on, label:'Q4\n(NMOS)', side:'bot-right'},
+  };
+
+  // Vertical rails
+  wire(L+30,T, L+30, T+28, q1on);
+  wire(L+30,T+72,L+30,mT,  q1on);
+  wire(L+30,mB, L+30,B-72, q3on);
+  wire(L+30,B-28,L+30,B,   q3on);
+
+  wire(R-30,T, R-30,T+28,  q2on);
+  wire(R-30,T+72,R-30,mT,  q2on);
+  wire(R-30,mB, R-30,B-72, q4on);
+  wire(R-30,B-28,R-30,B,   q4on);
+
+  // Horizontal rails
+  wire(L,T,R,T, q1on||q2on);
+  wire(L,B,R,B, q3on||q4on);
+
+  // Motor terminal wires
+  wire(L+30, mT, mL, mT, q1on);
+  wire(L+30, mB, mL, mB, q3on);
+  wire(R-30, mT, mR, mT, q2on);
+  wire(R-30, mB, mR, mB, q4on);
+
+  // Motor box
+  const motorColor = state==='up'?'#3fb950': state==='down'?'#f85149': '#30363d';
+  ctx.strokeStyle = motorColor; ctx.lineWidth = 2.5;
+  ctx.strokeRect(mL, mT, mR-mL, mB-mT);
+  ctx.fillStyle = motorColor+'22'; ctx.fillRect(mL,mT,mR-mL,mB-mT);
+  ctx.fillStyle = motorColor; ctx.font='bold 13px Segoe UI'; ctx.textAlign='center';
+  ctx.fillText('M', cx, cy+5);
+  ctx.font='9px Segoe UI'; ctx.fillStyle='#8b949e';
+  ctx.fillText('DC Motor', cx, cy+18);
+
+  if(state==='up'){
+    drawCurrent(ctx, cx, mT-8, cx, T+5, '#3fb950');
+    ctx.fillStyle='#3fb950'; ctx.font='bold 10px Segoe UI';
+    ctx.fillText('I →', cx+55, cy-10);
+    ctx.fillText('M+ left', mL-20, cy-2);
+  } else if(state==='down'){
+    drawCurrent(ctx, cx, mB+8, cx, B-5, '#f85149');
+    ctx.fillStyle='#f85149'; ctx.font='bold 10px Segoe UI';
+    ctx.fillText('I ←', cx+55, cy+10);
+    ctx.fillText('M- left', mL-20, cy+8);
+  }
+
+  // Flyback diodes (small)
+  Object.values(Q).forEach(q=>{
+    const dx = (q.side.includes('right')?1:-1);
+    ctx.save();
+    ctx.translate(q.x + dx*18, q.y);
+    ctx.strokeStyle='#bc8cff'; ctx.lineWidth=1.2;
+    ctx.beginPath(); ctx.moveTo(-6,0); ctx.lineTo(6,0); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(2,-5); ctx.lineTo(2,5); ctx.lineTo(-4,0); ctx.closePath();
+    ctx.fillStyle='#bc8cff33'; ctx.fill();
+    ctx.strokeStyle='#bc8cff'; ctx.stroke();
+    ctx.restore();
+    ctx.fillStyle='#bc8cff'; ctx.font='8px monospace'; ctx.textAlign ='center';
+    ctx.fillText('D'+(Object.values(Q).indexOf(q)+1), q.x+dx*18, q.y+14);
+  });
+
+  // Draw transistors
+  Object.entries(Q).forEach(([name,q])=>{
+    drawMOSFET(ctx, q.x, q.y, q.on, q.label, name);
+  });
+
+  // Gate control labels
+  ctx.fillStyle='#d29922'; ctx.font='9px monospace'; ctx.textAlign='center';
+  ctx.fillText('FPGA', cx, T+12);
+  ctx.fillText('Gate Drive', cx, T+22);
+
+  // Legend
+  const ly = H-18;
+  ctx.font='10px Segoe UI'; ctx.textAlign='left';
+  [[`#3fb950`,'ON / Active path'],[`#30363d`,'OFF / Inactive'],[`#bc8cff`,'Flyback diode']].forEach(([c,l],i)=>{
+    ctx.fillStyle=c; ctx.fillRect(20+i*160,ly-8,12,10);
+    ctx.fillStyle='#8b949e'; ctx.fillText(l,36+i*160,ly);
+  });
+}
+
+function drawMOSFET(ctx, x, y, on, label, name){
+  const col = on ? '#3fb950' : '#8b949e';
+  ctx.save();
+  ctx.translate(x,y);
+  ctx.beginPath();
+  ctx.arc(0,0,22,0,Math.PI*2);
+  ctx.fillStyle = on ? '#1a3a2a' : '#1c2128';
+  ctx.fill();
+  ctx.strokeStyle = col; ctx.lineWidth = on?2.5:1.5;
+  if(on){ ctx.shadowColor=col; ctx.shadowBlur=10; }
+  ctx.stroke();
+  ctx.fillStyle=col; ctx.font=(on?'bold ':'')+'9px monospace';
+  ctx.textAlign='center'; ctx.textBaseline='middle';
+  const lines=label.split('\n');
+  lines.forEach((l,i)=>ctx.fillText(l,0,-4+i*11));
+  if(on){ ctx.fillStyle='#3fb950'; ctx.font='8px Segoe UI'; ctx.fillText('ON',0,16); }
+  ctx.restore();
+}
+
+function drawCurrent(ctx, x1,y1,x2,y2,col){
+  ctx.save();
+  ctx.strokeStyle=col; ctx.lineWidth=2;
+  ctx.setLineDash([6,4]);
+  ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2); ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.restore();
+}
+
+/* ─────────────────── FPGA ──────────────────── */
+let fpgaPos  = 1;
+let fpgaDir  = 'idle';
+let fpgaCalls = [];
+
+function setPos(p){
+  fpgaPos=p;
+  ['f1','f2','f3'].forEach(id=>document.getElementById('pos-'+id).classList.remove('active'));
+  document.getElementById('pos-f'+p).classList.add('active');
+  updateFPGA(); drawFPGA();
+}
+function setDir(d){
+  fpgaDir=d;
+  ['idle','up','dn'].forEach(id=>document.getElementById('dir-'+id).classList.remove('active'));
+  document.getElementById('dir-'+(d==='down'?'dn':d)).classList.add('active');
+  updateFPGA(); drawFPGA();
+}
+function toggleCall(f){
+  const idx=fpgaCalls.indexOf(f);
+  if(idx>=0) fpgaCalls.splice(idx,1); else fpgaCalls.push(f);
+  ['f1','f2','f3'].forEach(id=>document.getElementById('call-'+id).classList.remove('active'));
+  fpgaCalls.forEach(c=>document.getElementById('call-f'+c).classList.add('active'));
+  updateFPGA(); drawFPGA();
+}
+
+function computePriority(pos, dir, calls){
+  if(!calls.length) return { target:null, direction:null, rule:'No active calls.' };
+  const filtered = calls.filter(c => c !== pos);
+  if(!filtered.length) return { target:null, direction:null, rule:'Already at called floor.' };
+
+  const above = filtered.filter(c=>c>pos).sort((a,b)=>a-b);
+  const below = filtered.filter(c=>c<pos).sort((a,b)=>b-a);
+
+  if(dir==='up'){
+    if(above.length) return { target:above[0], direction:'up',   rule:`Direction is UP → serve next floor above first: Floor ${above[0]}`, continue:true };
+    if(below.length) return { target:below[0], direction:'down', rule:`No floors above in up direction → reverse to Floor ${below[0]}` };
+  }
+  if(dir==='down'){
+    if(below.length) return { target:below[0], direction:'down', rule:`Direction is DOWN → serve next floor below first: Floor ${below[0]}`, continue:true };
+    if(above.length) return { target:above[0], direction:'up',   rule:`No floors below in down direction → reverse to Floor ${above[0]}` };
+  }
+  // idle – prefer serving closest, break tie by going down
+  const closest = filtered.reduce((a,b)=>Math.abs(b-pos)<Math.abs(a-pos)?b:a);
+  const dn = (closest<pos)?'down':'up';
+  return { target:closest, direction:dn, rule:`Idle: serve closest call → Floor ${closest}` };
+}
+
+function updateFPGA(){
+  const res = computePriority(fpgaPos, fpgaDir, fpgaCalls);
+  const dirLabel = { up:'Moving UP ↑', down:'Moving DOWN ↓', null:'N/A' };
+  const motorCmd = res.direction==='up'?'Q1+Q4 ON':'Q2+Q3 ON';
+
+  let html = '';
+  const row = (label,val,cls='val-blue')=>
+    `<div class="result-line"><span class="result-label">${label}</span><span class="result-val ${cls}">${val}</span></div>`;
+
+  html += row('Current Position', `Floor ${fpgaPos}`, 'val-blue');
+  html += row('Current Direction', fpgaDir==='idle'?'Idle':dirLabel[fpgaDir],
+              fpgaDir==='up'?'val-green':fpgaDir==='down'?'val-red':'val-blue');
+  html += row('Active Calls', fpgaCalls.length?fpgaCalls.map(c=>'F'+c).join(', '):'None',
+              fpgaCalls.length?'val-yellow':'val-blue');
+  if(res.target){
+    const tcol = res.target===1?'val-green':res.target===2?'val-yellow':'val-red';
+    html += row('▶ Next Target Floor', `Floor ${res.target}`, tcol);
+    html += row('▶ Commanded Direction', dirLabel[res.direction] || 'N/A',
+                res.direction==='up'?'val-green':'val-red');
+    html += row('▶ H-Bridge Command', motorCmd,
+                res.direction==='up'?'val-green':'val-red');
+    html += row('▶ FPGA Output [2:0]',
+                `${res.target===1?'001':res.target===2?'010':'100'} (Floor ${res.target})`, 'val-purple');
+  } else {
+    html += row('▶ Next Target Floor', 'None', 'val-blue');
+    html += row('▶ Commanded Direction', 'STOP', 'val-blue');
+  }
+  document.getElementById('fpga-result').innerHTML = html;
+  document.getElementById('fpga-explain').innerHTML =
+    `<span>Priority Rule Applied:</span> ${res.rule}`;
+
+  // Update style for val-purple
+  document.querySelectorAll('.val-purple').forEach(e=>e.style.color='var(--purple)');
+}
+
+function drawFPGA(){
+  const canvas = document.getElementById('fpga-canvas');
+  if(!canvas) return;
+  const W = canvas.offsetWidth; const H = canvas.height;
+  canvas.width = W;
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0,0,W,H);
+
+  const res = computePriority(fpgaPos, fpgaDir, fpgaCalls);
+
+  // ── Layout
+  // [Inputs] → [Priority Encoder] → [Direction FSM] → [H-Bridge Ctrl] → [Motor...]
+  const boxes = [
+    { id:'inp',   x:.04, y:.30, w:.18, h:.40, label:'INPUTS\n(Floor Calls\n+ Position\n+ Direction)', color:'#d29922'},
+    { id:'enc',   x:.27, y:.25, w:.16, h:.50, label:'PRIORITY\nENCODER\n(Combinational\nLogic)', color:'#58a6ff'},
+    { id:'fsm',   x:.49, y:.25, w:.16, h:.50, label:'DIRECTION\nFSM\n(Sequential\nLogic)', color:'#bc8cff'},
+    { id:'drv',   x:.70, y:.30, w:.14, h:.40, label:'H-BRIDGE\nCTRL\nLogic', color:'#db6d28'},
+    { id:'mot',   x:.89, y:.36, w:.09, h:.28, label:'MOTOR', color: res.target?(res.direction==='up'?'#3fb950':'#f85149'):'#30363d'},
+  ];
+
+  function bx(b){ return b.x*W; }
+  function by(b){ return b.y*H; }
+  function bw(b){ return b.w*W; }
+  function bh(b){ return b.h*H; }
+
+  // Draw connections
+  for(let i=0;i<boxes.length-1;i++){
+    const a=boxes[i], b=boxes[i+1];
+    const ax = bx(a)+bw(a), ay = by(a)+bh(a)/2;
+    const bxv= bx(b),       byv= by(b)+bh(b)/2;
+    const active = !!res.target;
+    ctx.beginPath(); ctx.moveTo(ax,ay); ctx.lineTo(bxv,byv);
+    ctx.strokeStyle = active ? boxes[i].color : '#30363d';
+    ctx.lineWidth = active?2.5:1.5;
+    ctx.stroke();
+    // arrow
+    const angle = Math.atan2(byv-ay, bxv-ax);
+    ctx.save(); ctx.translate(bxv,byv); ctx.rotate(angle);
+    ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(-10,-5); ctx.lineTo(-10,5); ctx.closePath();
+    ctx.fillStyle = active?boxes[i].color:'#30363d'; ctx.fill();
+    ctx.restore();
+  }
+
+  // Draw boxes
+  boxes.forEach(b=>{
+    ctx.save();
+    const isActive = (b.id!=='mot') || !!res.target;
+    if(isActive){ ctx.shadowColor=b.color; ctx.shadowBlur=12; }
+    ctx.fillStyle = b.color+'22';
+    ctx.strokeStyle = isActive ? b.color : '#30363d';
+    ctx.lineWidth = isActive ? 2 : 1.2;
+    const rx=bx(b),ry=by(b),rw=bw(b),rh=bh(b);
+    ctx.beginPath();
+    ctx.roundRect(rx,ry,rw,rh,8);
+    ctx.fill(); ctx.stroke();
+    ctx.restore();
+
+    ctx.fillStyle = b.color; ctx.textAlign='center'; ctx.font='bold 10px Segoe UI';
+    const lines=b.label.split('\n');
+    const cy2 = by(b)+bh(b)/2 - (lines.length-1)*7;
+    lines.forEach((l,i)=>ctx.fillText(l, bx(b)+bw(b)/2, cy2+i*14));
+  });
+
+  // Signal bus labels
+  const busLabels = [
+    {x:.225, y:.25, label:'call[2:0]\npos[1:0]\ndir[1:0]', color:'#d29922'},
+    {x:.460, y:.20, label:'target[1:0]\nnext_dir', color:'#58a6ff'},
+    {x:.665, y:.20, label:'state[2:0]', color:'#bc8cff'},
+    {x:.845, y:.28, label:'IN[3:0]', color:'#db6d28'},
+  ];
+  busLabels.forEach(bl=>{
+    ctx.fillStyle=bl.color; ctx.font='8px monospace'; ctx.textAlign='center';
+    bl.label.split('\n').forEach((l,i)=>ctx.fillText(l,bl.x*W,(bl.y+i*.06)*H));
+  });
+
+  // Input bits on left
+  const inputBits = [
+    {label:'F1_CALL', val: fpgaCalls.includes(1)?1:0},
+    {label:'F2_CALL', val: fpgaCalls.includes(2)?1:0},
+    {label:'F3_CALL', val: fpgaCalls.includes(3)?1:0},
+    {label:'POS[1:0]', val: fpgaPos===1?'01':fpgaPos===2?'10':'11'},
+    {label:'DIR[1:0]', val: fpgaDir==='idle'?'00':fpgaDir==='up'?'01':'10'},
+  ];
+  ctx.font='9px monospace'; ctx.textAlign='right';
+  inputBits.forEach((b,i)=>{
+    const y = H*0.30 + i*(H*0.40/5) + 12;
+    ctx.fillStyle='#8b949e'; ctx.fillText(b.label, W*0.03, y);
+    ctx.fillStyle=b.val?'#3fb950':'#30363d';
+    ctx.fillRect(W*0.035, y-10, 16, 12);
+    ctx.fillStyle=b.val?'#000':'#8b949e'; ctx.textAlign='center';
+    ctx.fillText(b.val, W*0.035+8, y);
+    ctx.textAlign='right';
+  });
+
+  // Output bits on right
+  if(res.target){
+    const out = res.target===1?'001':res.target===2?'010':'100';
+    ctx.fillStyle='#3fb950'; ctx.font='9px monospace'; ctx.textAlign='left';
+    ctx.fillText(`TARGET: F${res.target}`, W*0.965, H*0.38);
+    ctx.fillText(`DIR: ${res.direction==='up'?'UP ↑':'DOWN ↓'}`, W*0.965, H*0.48);
+    ctx.fillText(`OUT: ${out}`, W*0.965, H*0.58);
+  }
+}
+
+/* ─────────────────── INIT ──────────────────── */
+window.addEventListener('load', ()=>{
+  drawSM();
+  updateFPGA();
+});
+window.addEventListener('resize', ()=>{
+  drawSM();
+  if(document.getElementById('tab-hb').classList.contains('active')) drawHB(motorState);
+  if(document.getElementById('tab-fp').classList.contains('active')) drawFPGA();
+});
+</script>
+</body>
+</html>
